@@ -1,5 +1,4 @@
 streamlit
-firebase-admin
 opencv-python
 streamlit-webrtc
 pandas
