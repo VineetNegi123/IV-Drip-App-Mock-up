@@ -4,28 +4,30 @@ import pandas as pd
 import os
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 import av
-from pyzbar.pyzbar import decode
 import cv2
 import firebase_admin
 from firebase_admin import credentials, db
 
-# Initialize Firebase
+# ---------------------------
+# Firebase Initialization
+# ---------------------------
 if not firebase_admin._apps:
-    cred = credentials.Certificate("firebase_service_account.json")  # Replace with your actual path
+    cred = credentials.Certificate("firebase_service_account.json")  # Replace with your own .json
     firebase_admin.initialize_app(cred, {
-        'databaseURL': 'https://your-project-id.firebaseio.com/'  # Replace with your Firebase Realtime DB URL
+        'databaseURL': 'https://your-project-id.firebaseio.com/'  # Replace with your DB URL
     })
 
-# Fetch sensor data from Firebase
 def get_sensor_data():
     try:
-        ref = db.reference("sensor_data")  # Path to your ESP32 data
+        ref = db.reference("sensor_data")
         return ref.get()
     except Exception as e:
         st.error(f"Firebase Error: {e}")
         return None
 
-# Log alerts locally
+# ---------------------------
+# Alert Logger
+# ---------------------------
 def log_alert(message):
     log_path = "alert_log.csv"
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -37,23 +39,33 @@ def log_alert(message):
     else:
         entry.to_csv(log_path, index=False)
 
-# QR Code scanner processor
+# ---------------------------
+# OpenCV QR Code Scanner
+# ---------------------------
 class QRProcessor(VideoProcessorBase):
+    def __init__(self):
+        self.qr_detector = cv2.QRCodeDetector()
+
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
-        decoded_objs = decode(img)
-        for obj in decoded_objs:
-            data = obj.data.decode("utf-8")
+        data, points, _ = self.qr_detector.detectAndDecode(img)
+        if data:
             st.session_state.qr_result = data
-            cv2.rectangle(img, obj.rect[:2], (obj.rect[0]+obj.rect[2], obj.rect[1]+obj.rect[3]), (0, 255, 0), 2)
+            if points is not None:
+                points = points.astype(int)
+                cv2.polylines(img, [points], isClosed=True, color=(0, 255, 0), thickness=2)
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-# Streamlit UI setup
+# ---------------------------
+# Streamlit App
+# ---------------------------
 st.set_page_config(page_title="DripGuard", layout="wide")
 st.sidebar.title("🧭 Navigation")
 page = st.sidebar.radio("Go to", ["Live Monitor", "QR Scan", "History", "Admin Login"])
 
-# Live Monitor Page
+# ---------------------------
+# LIVE MONITOR PAGE
+# ---------------------------
 if page == "Live Monitor":
     st.title("💧 DripGuard - Real-Time IV Monitor")
 
@@ -98,13 +110,15 @@ if page == "Live Monitor":
             st.success("🚨 Nurse Alert Sent!")
             log_alert("Manual Nurse Alert")
 
-        if sensor['malfunction']:
+        if sensor.get("malfunction"):
             st.error("⚠️ Malfunction Detected!")
             log_alert("Device Malfunction")
     else:
         st.warning("⚠️ No sensor data available yet.")
 
-# QR Code Page
+# ---------------------------
+# QR SCAN PAGE
+# ---------------------------
 elif page == "QR Scan":
     st.title("🔍 QR Code Scanner")
     if 'qr_result' not in st.session_state:
@@ -113,7 +127,9 @@ elif page == "QR Scan":
     if st.session_state.qr_result:
         st.success(f"✅ Scanned Patient ID: {st.session_state.qr_result}")
 
-# Alert History
+# ---------------------------
+# HISTORY PAGE
+# ---------------------------
 elif page == "History":
     st.title("📈 Alert History")
     try:
@@ -123,7 +139,9 @@ elif page == "History":
     except:
         st.info("No alerts logged yet.")
 
-# Admin Page
+# ---------------------------
+# ADMIN LOGIN PAGE
+# ---------------------------
 elif page == "Admin Login":
     st.title("🔐 Admin Login")
     user = st.text_input("Username")
