@@ -5,28 +5,31 @@ import os
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 import av
 import cv2
-import firebase_admin
-from firebase_admin import credentials, db
+import random
 
 # ---------------------------
-# Firebase Initialization
+# Simulated sensor data
 # ---------------------------
-if not firebase_admin._apps:
-    cred = credentials.Certificate("firebase_service_account.json")  # Replace with your own .json
-    firebase_admin.initialize_app(cred, {
-        'databaseURL': 'https://your-project-id.firebaseio.com/'  # Replace with your DB URL
-    })
-
 def get_sensor_data():
-    try:
-        ref = db.reference("sensor_data")
-        return ref.get()
-    except Exception as e:
-        st.error(f"Firebase Error: {e}")
-        return None
+    drip_level = round(random.uniform(10, 100), 1)
+    flow_rate = round(random.uniform(30, 120), 1)
+    volume_remaining = (drip_level / 100) * 500
+    time_to_empty = round(volume_remaining / flow_rate, 2) if flow_rate > 0 else None
+
+    return {
+        "patient_id": "TEST123",
+        "drip_level": drip_level,
+        "drip_active": random.choice([True, False]),
+        "air_bubble": random.choice([False, True, False]),
+        "power_status": random.choice(["Normal", "Battery Backup", "Offline"]),
+        "drip_flow_rate": flow_rate,
+        "volume_remaining": volume_remaining,
+        "time_to_empty_hr": time_to_empty,
+        "malfunction": random.choice([False, False, True])
+    }
 
 # ---------------------------
-# Alert Logger
+# Alert logger
 # ---------------------------
 def log_alert(message):
     log_path = "alert_log.csv"
@@ -40,7 +43,7 @@ def log_alert(message):
         entry.to_csv(log_path, index=False)
 
 # ---------------------------
-# OpenCV QR Code Scanner
+# OpenCV QR code scanner
 # ---------------------------
 class QRProcessor(VideoProcessorBase):
     def __init__(self):
@@ -63,62 +66,50 @@ st.set_page_config(page_title="DripGuard", layout="wide")
 st.sidebar.title("🧭 Navigation")
 page = st.sidebar.radio("Go to", ["Live Monitor", "QR Scan", "History", "Admin Login"])
 
-# ---------------------------
-# LIVE MONITOR PAGE
-# ---------------------------
 if page == "Live Monitor":
-    st.title("💧 DripGuard - Real-Time IV Monitor")
-
+    st.title("💧 DripGuard - Simulated IV Monitor")
     sensor = get_sensor_data()
-    if sensor:
-        patient_id = sensor.get("patient_id", "Unknown")
-        st.markdown(f"### 👤 Patient ID: {patient_id}")
-        col1, col2, col3 = st.columns(3)
+    st.markdown(f"### 👤 Patient ID: {sensor['patient_id']}")
 
-        with col1:
-            st.metric("💧 Drip Level", f"{sensor['drip_level']}%")
-            if sensor['drip_level'] < 20:
-                st.error("⚠️ Low Drip Level!")
-                log_alert("Low Drip Level")
-            elif sensor['drip_level'] < 50:
-                st.warning("Drip Level below 50%")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("💧 Drip Level", f"{sensor['drip_level']}%")
+        if sensor['drip_level'] < 20:
+            st.error("⚠️ Low Drip Level!")
+            log_alert("Low Drip Level")
+        elif sensor['drip_level'] < 50:
+            st.warning("Drip Level below 50%")
 
-        with col2:
-            st.metric("🩺 Drip Activity", "Active" if sensor['drip_active'] else "Stopped")
-            if not sensor['drip_active']:
-                st.error("⚠️ Drip stopped!")
-                log_alert("Drip stopped")
-            if sensor['air_bubble']:
-                st.error("⚠️ Air Bubble Detected!")
-                log_alert("Air Bubble Detected")
+    with col2:
+        st.metric("🩺 Drip Activity", "Active" if sensor['drip_active'] else "Stopped")
+        if not sensor['drip_active']:
+            st.error("⚠️ Drip stopped!")
+            log_alert("Drip stopped")
+        if sensor['air_bubble']:
+            st.error("⚠️ Air Bubble Detected!")
+            log_alert("Air Bubble Detected")
 
-        with col3:
-            st.metric("🔋 Power Status", sensor['power_status'])
-            if sensor['power_status'] == "Offline":
-                st.error("⚠️ Power Outage!")
-                log_alert("Power Outage")
+    with col3:
+        st.metric("🔋 Power Status", sensor['power_status'])
+        if sensor['power_status'] == "Offline":
+            st.error("⚠️ Power Outage!")
+            log_alert("Power Outage")
 
-        st.metric("💦 Flow Rate", f"{sensor['drip_flow_rate']} mL/hr")
-        if 'volume_remaining' in sensor:
-            st.metric("Volume Left", f"{round(sensor['volume_remaining'], 1)} mL")
-        if 'time_to_empty_hr' in sensor:
-            st.metric("⏳ Time to Depletion", f"{sensor['time_to_empty_hr']} hr")
-            if sensor['time_to_empty_hr'] < 1:
-                st.warning("IV bag may run empty in less than 1 hour!")
+    st.metric("💦 Flow Rate", f"{sensor['drip_flow_rate']} mL/hr")
+    st.metric("Volume Left", f"{round(sensor['volume_remaining'], 1)} mL")
+    if sensor['time_to_empty_hr']:
+        st.metric("⏳ Time to Depletion", f"{sensor['time_to_empty_hr']} hr")
+        if sensor['time_to_empty_hr'] < 1:
+            st.warning("May run empty in < 1 hr!")
 
-        if st.button("📞 Call Nurse Now"):
-            st.success("🚨 Nurse Alert Sent!")
-            log_alert("Manual Nurse Alert")
+    if st.button("📞 Call Nurse Now"):
+        st.success("🚨 Nurse Alert Sent!")
+        log_alert("Manual Nurse Alert")
 
-        if sensor.get("malfunction"):
-            st.error("⚠️ Malfunction Detected!")
-            log_alert("Device Malfunction")
-    else:
-        st.warning("⚠️ No sensor data available yet.")
+    if sensor['malfunction']:
+        st.error("⚠️ Malfunction Detected!")
+        log_alert("Device Malfunction")
 
-# ---------------------------
-# QR SCAN PAGE
-# ---------------------------
 elif page == "QR Scan":
     st.title("🔍 QR Code Scanner")
     if 'qr_result' not in st.session_state:
@@ -127,9 +118,6 @@ elif page == "QR Scan":
     if st.session_state.qr_result:
         st.success(f"✅ Scanned Patient ID: {st.session_state.qr_result}")
 
-# ---------------------------
-# HISTORY PAGE
-# ---------------------------
 elif page == "History":
     st.title("📈 Alert History")
     try:
@@ -139,9 +127,6 @@ elif page == "History":
     except:
         st.info("No alerts logged yet.")
 
-# ---------------------------
-# ADMIN LOGIN PAGE
-# ---------------------------
 elif page == "Admin Login":
     st.title("🔐 Admin Login")
     user = st.text_input("Username")
@@ -149,6 +134,5 @@ elif page == "Admin Login":
     if st.button("Login"):
         if user == "admin" and pwd == "admin123":
             st.success("Access granted.")
-            st.info("Configure thresholds, reset system, or export logs.")
         else:
             st.error("❌ Invalid credentials.")
