@@ -2,9 +2,9 @@ import streamlit as st
 import datetime
 import pandas as pd
 import os
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
-import av
 import cv2
+import numpy as np
+from PIL import Image
 import random
 
 # ---------------------------
@@ -43,28 +43,11 @@ def log_alert(message):
         entry.to_csv(log_path, index=False)
 
 # ---------------------------
-# OpenCV QR code scanner
-# ---------------------------
-class QRProcessor(VideoProcessorBase):
-    def __init__(self):
-        self.qr_detector = cv2.QRCodeDetector()
-
-    def recv(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        data, points, _ = self.qr_detector.detectAndDecode(img)
-        if data:
-            st.session_state.qr_result = data
-            if points is not None:
-                points = points.astype(int)
-                cv2.polylines(img, [points], isClosed=True, color=(0, 255, 0), thickness=2)
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-# ---------------------------
 # Streamlit App
 # ---------------------------
 st.set_page_config(page_title="DripGuard", layout="wide")
 st.sidebar.title("🧭 Navigation")
-page = st.sidebar.radio("Go to", ["Live Monitor", "QR Scan", "History", "Admin Login"])
+page = st.sidebar.radio("Go to", ["Live Monitor", "QR Image Upload", "History", "Admin Login"])
 
 if page == "Live Monitor":
     st.title("💧 DripGuard - Simulated IV Monitor")
@@ -110,13 +93,22 @@ if page == "Live Monitor":
         st.error("⚠️ Malfunction Detected!")
         log_alert("Device Malfunction")
 
-elif page == "QR Scan":
-    st.title("🔍 QR Code Scanner")
-    if 'qr_result' not in st.session_state:
-        st.session_state.qr_result = ''
-    webrtc_streamer(key="qr", video_processor_factory=QRProcessor)
-    if st.session_state.qr_result:
-        st.success(f"✅ Scanned Patient ID: {st.session_state.qr_result}")
+elif page == "QR Image Upload":
+    st.title("📷 Upload QR Code Image")
+
+    uploaded_file = st.file_uploader("Upload an image with QR code", type=["jpg", "png", "jpeg"])
+    if uploaded_file:
+        image = Image.open(uploaded_file)
+        img_array = np.array(image)
+        img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+
+        qr_detector = cv2.QRCodeDetector()
+        data, points, _ = qr_detector.detectAndDecode(img_bgr)
+
+        if data:
+            st.success(f"✅ QR Code content: {data}")
+        else:
+            st.warning("⚠️ No QR code detected.")
 
 elif page == "History":
     st.title("📈 Alert History")
