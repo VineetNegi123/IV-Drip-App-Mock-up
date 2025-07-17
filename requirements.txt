@@ -1,7 +1,6 @@
 streamlit
 firebase-admin
-streamlit-webrtc
 opencv-python
-pyzbar
+streamlit-webrtc
 pandas
 av
