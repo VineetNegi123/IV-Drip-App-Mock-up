@@ -1,2 +1,7 @@
 streamlit
+firebase-admin
+streamlit-webrtc
+opencv-python
+pyzbar
 pandas
+av
