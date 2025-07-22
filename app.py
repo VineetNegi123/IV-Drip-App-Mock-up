@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 from PIL import Image
 import random
+import json
 
 # ---------------------------
 # Simulated sensor data
@@ -17,7 +18,6 @@ def get_sensor_data():
     time_to_empty = round(volume_remaining / flow_rate, 2) if flow_rate > 0 else None
 
     return {
-        "patient_id": "TEST123",
         "drip_level": drip_level,
         "drip_active": random.choice([True, False]),
         "air_bubble": random.choice([False, True, False]),
@@ -43,16 +43,65 @@ def log_alert(message):
         entry.to_csv(log_path, index=False)
 
 # ---------------------------
-# Streamlit App
+# Load patient record
+# ---------------------------
+def load_patient(patient_id):
+    file_path = f"patients/{patient_id}.json"
+    if os.path.exists(file_path):
+        with open(file_path) as f:
+            return json.load(f)
+    else:
+        return {"name": "Unknown", "age": "-", "ward": "-", "diagnosis": "Not Found"}
+
+# ---------------------------
+# Streamlit App Setup
 # ---------------------------
 st.set_page_config(page_title="DripGuard", layout="wide")
-st.sidebar.title("🧭 Navigation")
-page = st.sidebar.radio("Go to", ["Live Monitor", "QR Image Upload", "History", "Admin Login"])
 
+if "role" not in st.session_state:
+    st.session_state.role = None
+if "patient_id" not in st.session_state:
+    st.session_state.patient_id = "TEST123"
+
+# ---------------------------
+# Login Page
+# ---------------------------
+if st.session_state.role is None:
+    st.title("🔐 Login to DripGuard System")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    if st.button("Login"):
+        if username == "admin" and password == "admin123":
+            st.session_state.role = "admin"
+        elif username == "nurse" and password == "nurse123":
+            st.session_state.role = "nurse"
+        else:
+            st.error("Invalid credentials.")
+    st.stop()
+
+# ---------------------------
+# Sidebar Navigation
+# ---------------------------
+st.sidebar.title("🧭 Navigation")
+pages = ["Live Monitor", "QR Image Upload", "History"]
+if st.session_state.role == "admin":
+    pages.append("Dashboard")
+pages.append("Logout")
+page = st.sidebar.radio("Go to", pages)
+
+if page == "Logout":
+    st.session_state.role = None
+    st.experimental_rerun()
+
+# ---------------------------
+# Page: Live Monitor
+# ---------------------------
 if page == "Live Monitor":
     st.title("💧 DripGuard - Simulated IV Monitor")
     sensor = get_sensor_data()
-    st.markdown(f"### 👤 Patient ID: {sensor['patient_id']}")
+    patient = load_patient(st.session_state.patient_id)
+    st.markdown(f"### 👤 Patient: {patient['name']} | ID: {st.session_state.patient_id}")
+    st.markdown(f"- Age: {patient['age']}, Ward: {patient['ward']}, Diagnosis: {patient['diagnosis']}")
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -93,10 +142,12 @@ if page == "Live Monitor":
         st.error("⚠️ Malfunction Detected!")
         log_alert("Device Malfunction")
 
+# ---------------------------
+# Page: QR Image Upload
+# ---------------------------
 elif page == "QR Image Upload":
     st.title("📷 Upload QR Code Image")
-
-    uploaded_file = st.file_uploader("Upload an image with QR code", type=["jpg", "png", "jpeg"])
+    uploaded_file = st.file_uploader("Upload image with QR code", type=["jpg", "png", "jpeg"])
     if uploaded_file:
         image = Image.open(uploaded_file)
         img_array = np.array(image)
@@ -106,10 +157,14 @@ elif page == "QR Image Upload":
         data, points, _ = qr_detector.detectAndDecode(img_bgr)
 
         if data:
-            st.success(f"✅ QR Code content: {data}")
+            st.session_state.patient_id = data
+            st.success(f"✅ Loaded Patient ID: {data}")
         else:
             st.warning("⚠️ No QR code detected.")
 
+# ---------------------------
+# Page: Alert History
+# ---------------------------
 elif page == "History":
     st.title("📈 Alert History")
     try:
@@ -119,12 +174,15 @@ elif page == "History":
     except:
         st.info("No alerts logged yet.")
 
-elif page == "Admin Login":
-    st.title("🔐 Admin Login")
-    user = st.text_input("Username")
-    pwd = st.text_input("Password", type="password")
-    if st.button("Login"):
-        if user == "admin" and pwd == "admin123":
-            st.success("Access granted.")
-        else:
-            st.error("❌ Invalid credentials.")
+# ---------------------------
+# Page: Admin Dashboard
+# ---------------------------
+elif page == "Dashboard" and st.session_state.role == "admin":
+    st.title("📊 Admin Dashboard")
+    try:
+        df = pd.read_csv("alert_log.csv")
+        st.metric("🔔 Total Alerts", len(df))
+        st.metric("📅 Active Days", df['Time'].str[:10].nunique())
+        st.bar_chart(df['Alert'].value_counts())
+    except:
+        st.info("No data to display.")
