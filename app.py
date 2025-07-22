@@ -7,6 +7,7 @@ import numpy as np
 from PIL import Image
 import random
 import json
+from io import BytesIO
 
 # ---------------------------
 # Simulated sensor data
@@ -16,7 +17,6 @@ def get_sensor_data():
     flow_rate = round(random.uniform(30, 120), 1)
     volume_remaining = (drip_level / 100) * 500
     time_to_empty = round(volume_remaining / flow_rate, 2) if flow_rate > 0 else None
-
     return {
         "drip_level": drip_level,
         "drip_active": random.choice([True, False]),
@@ -85,7 +85,7 @@ if st.session_state.role is None:
 st.sidebar.title("🧭 Navigation")
 pages = ["Live Monitor", "QR Image Upload", "History"]
 if st.session_state.role == "admin":
-    pages.append("Dashboard")
+    pages += ["Dashboard", "Admin Tools"]
 pages.append("Logout")
 page = st.sidebar.radio("Go to", pages)
 
@@ -152,10 +152,8 @@ elif page == "QR Image Upload":
         image = Image.open(uploaded_file)
         img_array = np.array(image)
         img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
-
         qr_detector = cv2.QRCodeDetector()
         data, points, _ = qr_detector.detectAndDecode(img_bgr)
-
         if data:
             st.session_state.patient_id = data
             st.success(f"✅ Loaded Patient ID: {data}")
@@ -163,7 +161,7 @@ elif page == "QR Image Upload":
             st.warning("⚠️ No QR code detected.")
 
 # ---------------------------
-# Page: Alert History
+# Page: History
 # ---------------------------
 elif page == "History":
     st.title("📈 Alert History")
@@ -186,3 +184,38 @@ elif page == "Dashboard" and st.session_state.role == "admin":
         st.bar_chart(df['Alert'].value_counts())
     except:
         st.info("No data to display.")
+
+# ---------------------------
+# Page: Admin Tools
+# ---------------------------
+elif page == "Admin Tools" and st.session_state.role == "admin":
+    st.title("🛠️ Admin Tools")
+
+    # Edit patient records
+    st.subheader("📋 Edit Patient Record")
+    patient_files = [f.replace(".json", "") for f in os.listdir("patients") if f.endswith(".json")]
+    selected_id = st.selectbox("Select Patient ID", patient_files)
+    with open(f"patients/{selected_id}.json") as f:
+        pdata = json.load(f)
+    with st.form("edit_patient"):
+        name = st.text_input("Name", value=pdata["name"])
+        age = st.number_input("Age", value=int(pdata["age"]), min_value=0)
+        ward = st.text_input("Ward", value=pdata["ward"])
+        diagnosis = st.text_input("Diagnosis", value=pdata["diagnosis"])
+        if st.form_submit_button("Save"):
+            pdata = {"name": name, "age": age, "ward": ward, "diagnosis": diagnosis}
+            with open(f"patients/{selected_id}.json", "w") as f:
+                json.dump(pdata, f, indent=2)
+            st.success("✅ Record updated")
+
+    # Export alert log
+    st.subheader("📤 Export Alert Log")
+    if os.path.exists("alert_log.csv"):
+        df = pd.read_csv("alert_log.csv")
+        buffer = BytesIO()
+        df.to_excel(buffer, index=False, engine="openpyxl")
+        st.download_button("📥 Download Excel Report", buffer.getvalue(),
+                           file_name="DripGuard_Alerts.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    else:
+        st.info("No alert log found.")
