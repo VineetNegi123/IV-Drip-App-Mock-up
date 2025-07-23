@@ -75,12 +75,12 @@ if st.session_state.role == "admin":
 pages.append("Logout")
 page = st.sidebar.radio("Go to", pages)
 
-# Fixed logout (no crash)
+# ✅ Logout (reruns the app after clearing session)
 if page == "Logout":
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.success("✅ Logged out.")
-    st.stop()
+    st.experimental_rerun()
 
 # Live Monitor
 if page == "Live Monitor":
@@ -210,5 +210,3 @@ elif page == "Admin Tools" and st.session_state.role == "admin":
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     else:
         st.info("No alert log found.")
-
-
