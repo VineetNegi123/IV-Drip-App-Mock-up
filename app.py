@@ -53,7 +53,7 @@ if "role" not in st.session_state:
 if "patient_id" not in st.session_state:
     st.session_state.patient_id = "TEST123"
 
-# Login page
+# Login
 if st.session_state.role is None:
     st.title("🔐 Login to DripGuard System")
     username = st.text_input("Username")
@@ -67,7 +67,7 @@ if st.session_state.role is None:
             st.error("Invalid credentials.")
     st.stop()
 
-# Sidebar navigation
+# Sidebar
 st.sidebar.title("🧭 Navigation")
 pages = ["Live Monitor", "QR Image Upload", "History"]
 if st.session_state.role == "admin":
@@ -75,9 +75,12 @@ if st.session_state.role == "admin":
 pages.append("Logout")
 page = st.sidebar.radio("Go to", pages)
 
+# Fixed logout (no crash)
 if page == "Logout":
-    st.session_state.role = None
-    st.experimental_rerun()
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.success("✅ Logged out.")
+    st.stop()
 
 # Live Monitor
 if page == "Live Monitor":
@@ -140,7 +143,7 @@ elif page == "QR Image Upload":
         else:
             st.warning("⚠️ No QR code detected.")
 
-# Alert History
+# History
 elif page == "History":
     st.title("📈 Alert History")
     try:
@@ -150,7 +153,7 @@ elif page == "History":
     except:
         st.info("No alerts yet.")
 
-# Dashboard (Improved)
+# Dashboard
 elif page == "Dashboard" and st.session_state.role == "admin":
     st.title("📊 Admin Dashboard")
     try:
@@ -207,4 +210,5 @@ elif page == "Admin Tools" and st.session_state.role == "admin":
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     else:
         st.info("No alert log found.")
+
 
